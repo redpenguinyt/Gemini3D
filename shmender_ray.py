@@ -1,5 +1,5 @@
-from gemini import Scene, Line, Vec2D, Sprite, Input, Polygon
-from gemini.utils import is_clockwise, hsv_to_rgb, txtcolours as tc, sleep
+from gemini import Scene, Line, sleep, Vec2D, Sprite, Input, Polygon, txtcolours as tc
+from gemini.utils import is_clockwise, hsv_to_rgb
 from math import sin, cos, pi
 import json, os, datetime
 
@@ -11,7 +11,7 @@ fps = MAX_FPS
 
 if not os.path.exists(SAVE_FILE):
 	with open(SAVE_FILE, "w") as f:
-		f.write('{"vertices": [], "faces": [], "offset": [0,0,10,0,0], "rotation": ["0", "t", "0"]}')
+		f.write('{"vertices": [], "faces": [], "offset": [0,0,10,0,0.25], "rotation": ["0", "t", "0"]}')
 
 with open(SAVE_FILE, "r") as f:
 	data = json.load(f)
@@ -22,9 +22,9 @@ with open(SAVE_FILE, "r") as f:
 	offset = data["offset"]
 	rotation = data["rotation"]
 
-FOV = 100
+FOV = 50
+ZOOM = 20
 
-paused = False
 counter = 0
 draw_mode = 3
 draw_mode_count = 4
@@ -32,19 +32,25 @@ texture_mode = 0
 texture_mode_count = 3
 is_move_enabled = False
 move_keys = ["d", "a", "e", "q", "w", "s", "left_arrow", "right_arrow", "down_arrow", "up_arrow"]
-OFFSET_AMOUNT = [2,2,2,pi/4,pi/8]
+OFFSET_AMOUNT = [20,20,20,pi/4,pi/8]
 
-view = Scene((140,40), is_main_scene=True, clear_char=" ", origin="centre")
+view = Scene((140,40), is_main_scene=True, clear_char=" ")
+ORIGIN = view.size/2
 def get_coord(x, y, z):
 	x, z = rotate(x, z, offset[3]+eval(rotation[1], {"t": counter}))
 	y, z = rotate(y, z, offset[4]+eval(rotation[0], {"t": counter}))
 	x, y = rotate(x, y, eval(rotation[2], {"t": counter}))
 
+	x *= 10
+	y *= 10
+	z *= 10
+
 	x += offset[0]
 	y += offset[1]
 	z += offset[2]
-	f = FOV / z
-	sx, sy = x * f, y * f
+
+	sx = x * FOV / (FOV + z)
+	sy = y * FOV / (FOV + z)
 
 	r = Vec2D(sx*1.9,sy)
 
@@ -70,21 +76,21 @@ def loop():
 	match draw_mode:
 		case 0:
 			for i, vertex in enumerate(VERTICES):
-				a = Sprite(get_coord(*vertex), str(i))
+				a = Sprite(ORIGIN + get_coord(*vertex), str(i))
 		case 1:
 			for face in FACES:
-				points = [get_coord(*VERTICES[vertex]) for vertex in face]
+				points = [ORIGIN + get_coord(*VERTICES[vertex]) for vertex in face]
 				if is_clockwise(points):
 					for i in range(len(points)):
 						a = Line(points[i], points[(i+1)%len(points)])
 		case 2:
 			for face in list(sorted(FACES, key=average_z_axis, reverse=True)):
-				points = [get_coord(*VERTICES[vertex]) for vertex in face]
+				points = [ORIGIN + get_coord(*VERTICES[vertex]) for vertex in face]
 				if is_clockwise(points):
 					a = Polygon(points, colour=get_colour(face))
 		case 3:
 			for face in list(sorted(FACES, key=average_z_axis, reverse=True)):
-				points = [get_coord(*VERTICES[vertex]) for vertex in face]
+				points = [ORIGIN + get_coord(*VERTICES[vertex]) for vertex in face]
 				if is_clockwise(points):
 					a = Polygon(points, colour=get_colour(face))
 					for i in range(len(points)):
@@ -94,15 +100,13 @@ def rotate(x, y, r):
 	s, c = sin(r), cos(r)
 	return x * c - y * s, x * s + y * c
 
-print("starting")
 while True:
 	start = datetime.datetime.now()
 	view.children[:] = []
-	if not paused:
-		counter += pi/64
+	counter += pi/64
 
 	loop()
-	view.debug_display = f"FPS: {round(fps, 1)}"
+	fps_display = Sprite((0,0), f"FPS: {round(fps, 1)}")
 
 	view.size = Vec2D(os.get_terminal_size()) - Vec2D(0,4)
 	view.render()
@@ -155,8 +159,6 @@ while True:
 				if user_input.startswith(("x", "y", "z")):
 					rotation[["x","y","z"].index(user_input[0])] = user_input[1:]
 					sleep(.5)
-			case " ":
-				paused = not paused
 			case "s":
 				json.dump({"vertices": VERTICES, "faces": FACES, "offset": offset, "rotation": rotation}, open(SAVE_FILE, "w"), indent=4)
 				print(f"Saved to {SAVE_FILE}!")
